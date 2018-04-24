@@ -1,0 +1,261 @@
+#!/bin/bash
+#---------------------------------------------------------------------
+# AUTHOR
+#	Written by Kyle Wollman (wollmank@oregonstate.edu)
+# DATE
+#	01/29/2018
+# CLASS
+#	CS344 400 W2018
+# DESCRIPTION
+#	Program 1 - Matrices: A number of functions to read matrices 
+#	from files or stdin and perform operations on them.
+#---------------------------------------------------------------------
+
+# Catch interrupt, hangup, and terminate signals and delete any temporary files
+trap "rm -f temp*; rm -f tpMatrix*; rm -f new*; exit 1" INT HUP TERM
+
+
+dims () {
+	# NAME
+	#	dims - display dimensions of a matrix
+	# SYNOPSIS
+	#	matrix dims [MATRIX]
+	# DESCRIPTION
+	#	Outputs two integers seperated by a space. The first integer represents
+	#	the number of rows in the matrix and the second represents the number
+	#	of columns.
+	# AUTHOR
+	#	Written by Kyle Wollman (wollmank@oregonstate.edu)
+    
+	rows=$(wc -l < $1)
+	cols=$(expr $(wc -w < $1) / $rows)
+	echo "$rows $cols"
+}
+
+transpose () {
+	# NAME
+	#	transpose - display the transpose of a matrix
+	# SYNOPSIS
+	#	matrix transpose [MATRIX]
+	# DESCRIPTION
+	#	Takes an M x N matrix and outputs an N x M matrix that is reflected
+	#	along the matrix's main diagonal leaving the values along the main
+	#	diagonal unchanged.
+	# AUTHOR
+	#	Written by Kyle Wollman (wollmank@oregonstate.edu)
+	
+	#calculate the dimensions of the matrix
+	rows=$(wc -l < $1)
+	cols=$(expr $(wc -w < $1) / $rows)
+	
+	j=1
+	tpMatrix="tpMatrix$$"
+	
+	while [ $j -le $cols ]
+	do
+		temprowfile="temprowfile$j$$"
+		newtemprowfile="newtemprowfile$j$$"
+		cut -f $j $1 | tr -s '\n' '\t' > $temprowfile			#cut each column and store it in a file as a row
+		count=$(wc -m < $temprowfile)							#get number of characters in the row
+		((count--))
+		cat $temprowfile | cut -c 1-$count > $newtemprowfile	#write the row minus the trailing '\t' to file
+		echo -e "" >> $newtemprowfile							
+		echo "$(<$newtemprowfile)" >> $tpMatrix					#write completed row to final matrix file
+		j=$((j + 1))
+	done
+	
+	cat $tpMatrix
+	
+	rm -f $tpMatrix
+	rm -f temprowfile*
+	rm -f newtemprowfile*
+}
+
+mean () {
+	# NAME
+	#	mean - display row vector mean of input matrix
+	# SYNOPSIS
+	#	matrix mean [MATRIX]
+	# DESCRIPTION
+	#	Outputs a row vector where each element in the row represents the mean
+	#	value of the corresponding column from the input matrix.
+	# AUTHOR
+	#	Written by Kyle Wollman (wollmank@oregonstate.edu)
+	
+	rows=$(wc -l < $1)
+	cols=$(expr $(wc -w < $1) / $rows)
+	j=1
+	tempmeanfile="tempmeanfile$$"
+	
+	while [ $j -le $cols ]
+	do
+		a=$(cut -f $j $1)		#store each column in a variable
+		sum=0
+		
+		for i in $a				#iterate through and sum the values in the column
+		do 
+			sum=$(($sum + $i))
+		done
+		
+		mean=$(( ($sum + ($rows / 2) * ( ($sum>0) * 2 - 1)) / $rows )) #calculate mean of column
+		echo -n $mean >> $tempmeanfile
+		
+		if [ $j -lt $cols ]		#add tabs between values, but not after the last value in the row
+		then
+			echo -n -e '\t' >> $tempmeanfile
+		fi
+		
+		((j++))
+	done
+	
+	echo -e "" >> $tempmeanfile
+	cat $tempmeanfile
+	rm -f $tempmeanfile
+}
+
+add () {
+	# NAME
+	#	add - add two matrices together element-wise
+	# SYNOPSIS
+	#	matrix add MATRIX_LEFT MATRIX_RIGHT 
+	# DESCRIPTION
+	#	Takes two M x N matrices and adds their elements together such that the
+	#	the resulting M x N matrix has elements where the row and column position
+	#	is the sum of the elements in that position in the two summand matrices.
+	#	Returns an error if the summand matrices are of different dimensions.
+	# AUTHOR
+	#	Written by Kyle Wollman (wollmank@oregonstate.edu)
+	
+	#get dimensions of both matrices to check compatibility
+	rows=$(wc -l < $1)
+	cols1=$(expr $(wc -w < $1) / $rows)
+	rows2=$(wc -l < $2)
+	cols=$(expr $(wc -w < $2) / $(wc -l < $2))
+	
+	#if matrices aren't same size return an error
+	[ $rows -ne $rows2 ] || [ $cols1 -ne $cols ] && echo "matrices cannot be added" >&2 && exit 1
+	
+	j=1
+	i=1
+	tempsumfile="tempsumfile$$"
+	
+	while [ $j -le $rows ]
+	do 
+		while [ $i -le $cols ]
+		do
+			a=$(cut -f $i $1 | head -n $j | tail -n 1)	#store the same element from each matrix in a variable
+			b=$(cut -f $i $2 | head -n $j | tail -n 1)
+			sum=$(($a + $b))
+			echo -n $sum >> $tempsumfile				#write sum to file
+			
+			if [ $i -lt $cols ]							#add tab between elements but not after last element in row
+			then
+				echo -e -n "\t" >> $tempsumfile
+			fi
+			
+			((i++))
+		done
+		
+		echo -e "" >> $tempsumfile						#create newline after each row is complete
+		i=1
+		((j++))
+	done
+
+	cat $tempsumfile
+
+	rm -f tempsumfile*
+}
+
+multiply () {
+	# NAME
+	#	multiply - multiplies an M x N matrix with an N x P matrix
+	# SYNOPSIS
+	#	matrix multiply MATRIX_LEFT MATRIX_RIGHT
+	# DESCRIPTION
+	#	Takes an M x N matrix and an N x P matrix and multiples them together
+	#	to produce an M x P matrix. If dimensions are incorrect it returns an
+	#	error.
+	# AUTHOR
+	#	Written by Kyle Wollman (wollmank@oregonstate.edu)
+	
+	#get dimensions of both matrices to check compatibility
+	rows=$(wc -l < $1)
+	cols1=$(expr $(wc -w < $1) / $rows)
+	rows2=$(wc -l < $2)
+	cols=$(expr $(wc -w < $2) / $(wc -l < $2))
+	
+	#if columns of MATRIX_LEFT != to rows of MATRIX_RIGHT return an error
+	[ $cols1 -ne $rows2 ] && echo "matrices cannot be multiplied" >&2 && exit 1
+	
+	j=1
+	k=1
+	i=1
+	tempmulfile="tempmulfile$$"
+	
+	while [ $j -le $rows ]
+	do
+		while [ $k -le $cols ]
+		do
+			total=0
+			
+			while [ $i -le $cols1 ]
+			do
+				a=$(cut -f $i $1 | head -n $j | tail -n 1)	#store element (j, i) from MATRIX_LEFT in variable
+				b=$(cut -f $k $2 | head -n $i | tail -n 1)	#store element (i, k) from MATRIX_RIGHT in variable
+				product=$(($a * $b))						#multiply the two elements together
+				total=$(($total + $product))				#keep a running total by summing all products in a column
+				((i++))
+			done
+			
+			echo -n $total >> $tempmulfile					#write total to file
+			
+			if [ $k -lt $cols ]								#add tabs between characters but not after last character in row
+			then
+				echo -n -e '\t' >> $tempmulfile
+			fi
+			
+			i=1
+			((k++))
+		done
+		
+		echo -e "" >> $tempmulfile							#create new line after each row is complete
+		k=1
+		((j++))
+	done
+
+	cat $tempmulfile
+	rm -f $tempmulfile
+}
+
+
+if [ $1 = "dims" ] || [ $1 = "transpose" ] || [ $1 = "mean" ]	#check which function is being called
+then
+	if [ $# -eq 2 ] && [ -e $2 ] && [ -s $2 ] && [ -r $2 ]		#check # of arguments, if files exist
+	then														#	are readable and > zero bytes
+		$1 "${@:2}"												#call function with correct parameters
+	
+	elif [ $# -eq 1 ]											#if # of arguments = 1 then input is coming
+	then														#	from stdin for these functions
+		tempstdin="tempstdin$$"
+		cat > $tempstdin										#store stdin in a file
+		$1 $tempstdin											#call function with the file
+		rm -f $tempstdin
+	
+	else														#if files not readable, non-existent, or
+		echo "error" >&2										#	equal zero bytes return error
+		exit 1
+	fi
+
+elif [ $1 = "add" ] || [ $1 = "multiply" ]						#check with function is being called
+then
+	if [ -e $2 ] && [ -e $3 ] && [ -r $2 ] && [ -r $3 ] && [ -s $2 ] && [ -s $3 ] 
+	then														#check existence, readability, and size of files
+		$1 "${@:2}"												#call function with files
+	else
+		echo "error" >&2
+		exit 1
+	fi
+else															#if function call not recognized return an error 
+    echo "not a valid command" >&2
+    exit 5
+fi
